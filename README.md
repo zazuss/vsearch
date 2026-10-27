@@ -19,7 +19,7 @@ Keyword search is still better when you *do* remember the exact word. Use both.
 | Index build (full) | 355 files / 13,265 chunks in **4m48s** (bottleneck is embedding, not storage) |
 | Incremental (nothing changed) | **0.01s** — mtime short-circuit |
 | Query end-to-end | **0.12s** (embed + 13k cosine over SQLite BLOBs) |
-| Index size | **60 MB** (1024-dim f32) |
+| Index size | **60 MB** with skills, **8.7 MB** notes+memory only (1024-dim f32) |
 | Binary | **4.5 MB** static, 4 crates |
 | Residency | embedding server ~1.0 GB RSS idle, ~2.7 GB after a full index |
 | API cost | **$0** |
@@ -96,6 +96,8 @@ vsearch index
 ```
 
 Any markdown tree works: Obsidian vault, Zettelkasten, a docs folder, your agent's memory files.
+
+**Index narrowly — this is the single biggest factor in result quality.** Not the model, not the chunk size. Here, adding the agent's skill directory (302 markdown files) to the index alongside notes made those notes unfindable: the skill files became 86% of all chunks, and their bare `## heading` blocks — which score high against almost any query while containing no answer — outranked real hits on nearly every query. Five "I know I wrote this but not where" queries returned **0/5** useful results. Dropping that one root: 13,210 → 1,904 chunks, 60 MB → 8.7 MB, **4/5 queries landed the exact chunk at rank 1**. Index the thing you forget, not the thing you can look up by name.
 
 ## Using it from an AI agent
 

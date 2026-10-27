@@ -96,7 +96,7 @@ vsearch index
 7. **`index.db-wal` / `-shm` are live files.** Do not delete them as "temp junk" — you can lose recent transactions.
 8. **Never `pkill -f "llama-server.*8098"`.** `-f` matches the full command line, which includes your own shell — it SIGTERMs itself. Use `systemctl --user stop` or kill by PID.
 9. **`ureq` 2.12 `post()` wants `&str`**, not `String`.
-10. **Watch what you index.** In one real deployment, a skill directory of 302 markdown files produced 86% of all chunks. Indexing only notes + memory (1,896 chunks) rebuilds in seconds. If recall feels noisy, the fix is usually a narrower `VSEARCH_ROOTS`, not a better model.
+10. **Watch what you index — it matters more than the model.** Same index, same queries, only `VSEARCH_ROOTS` changed. Five "I know I wrote this but not where" queries: with skills + notes + memory (13,210 chunks) **0/5 correct** — 13 of the top 15 hits were bare `## heading` lines from skill files, and three queries returned completely unrelated results. With notes + memory only (1,904 chunks) **4/5 landed the exact chunk at rank 1**. Cause: 302 skill files made up 86% of all chunks, and a `## heading` block scores high against almost any query while containing no answer. If recall feels noisy, narrow `VSEARCH_ROOTS` — do not swap the model.
 
 ## Rebuild
 
@@ -114,10 +114,11 @@ Measured on a Jetson Orin Nano 8GB, bge-m3 Q8_0, llama.cpp, GPU offload (`-ngl 9
 
 | | |
 |---|---|
-| Full index | 355 files / 13,265 chunks / 4m48s (bottleneck: embedding, not storage) |
+| Full index, notes + memory + skills | 355 files / 13,265 chunks / 4m48s (bottleneck: embedding, not storage) |
+| Full index, notes + memory only | 53 files / 1,904 chunks / pruning 302 skill files took 0.68s (cold full pass on 1.9k chunks is under a minute, not separately timed) |
 | Incremental, nothing changed | 0.01s |
-| Query end-to-end | 0.12s |
-| Index size | 60 MB |
+| Query end-to-end | 0.12s warm; 3.1s cold (includes starting the backend) |
+| Index size | 8.7 MB (notes + memory) vs 61 MB (with skills) |
 | Binary | 4.5 MB |
 | Embedding server RSS | ~1.0 GB idle, ~2.7 GB after a full index (does not shrink back) |
 | API cost | 0 |
