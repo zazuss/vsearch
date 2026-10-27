@@ -21,8 +21,19 @@ Keyword search is still better when you *do* remember the exact word. Use both.
 | Query end-to-end | **0.12s** (embed + 13k cosine over SQLite BLOBs) |
 | Index size | **60 MB** (1024-dim f32) |
 | Binary | **4.5 MB** static, 4 crates |
-| Residency | embedding server **411 MB** RSS |
+| Residency | embedding server ~1.0 GB RSS idle, ~2.7 GB after a full index |
 | API cost | **$0** |
+
+### A note on memory (why it is not always-on here)
+
+The embedding server is not cheap to keep resident: ~1.0 GB once CUDA is initialised, and after a single **full** index pass it grows to ~2.7 GB and **does not shrink back** — llama.cpp keeps its compute buffers. For a tool that gets used a couple of times a week, that is a bad trade against 7.5 GB of RAM. So in this deployment the server stays stopped and `vsearch` starts it on demand:
+
+- `ensure_service()` in `src/main.rs` health-checks the backend before every `index` and `query`.
+- If it is down: run `VSEARCH_START_CMD` (any shell command) or, failing that, `systemctl --user start $VSEARCH_UNIT` (default `vsearch-embed`), then poll for up to 15s.
+- Cold start ≈ 4s. A warm query is 0.12s.
+- A cron reaps it after 30 idle minutes so it does not sit in RAM between uses.
+
+Prefer always-on? Run the backend yourself and point `VSEARCH_EMBED_URL` at it — the auto-start path is skipped entirely whenever the health check already passes, and `VSEARCH_START_CMD` never fires.
 
 ## Requirements
 
@@ -161,7 +172,7 @@ vsearch index
 
 不装 Obsidian 也能用，这是它跟现成方案最大的区别。
 
-**实测**（Jetson Orin Nano 8GB / bge-m3 Q8_0）：全量索引 355 文件 13 265 片段 **4 分 48 秒**；无改动增量 **0.01 秒**；查询端到端 **0.12 秒**；索引 **60 MB**；二进制 **4.5 MB**；embedding 服务驻留 **411 MB**；API 花费 **0**。
+**实测**（Jetson Orin Nano 8GB / bge-m3 Q8_0）：全量索引 355 文件 13 265 片段 **4 分 48 秒**；无改动增量 **0.01 秒**；查询端到端 **0.12 秒**；索引 **60 MB**；二进制 **4.5 MB**；embedding 服务常驻约 **1.0 GB**（跑完一次全量索引会涨到约 2.7 GB 且不回落，所以本机默认停着、查时按需拉起，冷启动约 4 秒）；API 花费 **0**。
 
 **几个坑**：
 

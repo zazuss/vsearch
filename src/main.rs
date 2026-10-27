@@ -215,29 +215,43 @@ fn chunk_file(p: &Path) -> Vec<(usize, String)> {
     out
 }
 
-fn ensure_service() -> Result<(), String> {
-    if ureq::get(&health_url())
+fn health_ok() -> bool {
+    ureq::get(&health_url())
         .timeout(std::time::Duration::from_secs(2))
         .call()
         .is_ok()
-    {
+}
+
+/// 后端没起时尝试拉起。两种方式，按顺序：
+///   VSEARCH_START_CMD  任意 shell 命令（最通用）
+///   VSEARCH_UNIT       systemd 用户单元名（默认 vsearch-embed）
+/// 都不生效就报错，把健康检查地址打出来，别让调用方猜。
+fn ensure_service() -> Result<(), String> {
+    if health_ok() {
         return Ok(());
     }
-    eprintln!("embedding 服务没起，尝试拉起 vsearch-embed ...");
-    let _ = Command::new("systemctl")
-        .args(["--user", "start", "vsearch-embed"])
-        .status();
+    let start_cmd = env_or("VSEARCH_START_CMD", "");
+    if !start_cmd.is_empty() {
+        eprintln!("embedding 服务没起，执行 VSEARCH_START_CMD ...");
+        let _ = Command::new("sh").args(["-c", &start_cmd]).status();
+    } else {
+        let unit = env_or("VSEARCH_UNIT", "vsearch-embed");
+        eprintln!("embedding 服务没起，尝试拉起 {unit} ...");
+        let _ = Command::new("systemctl")
+            .args(["--user", "start", &unit])
+            .status();
+    }
     for _ in 0..30 {
         std::thread::sleep(std::time::Duration::from_millis(500));
-        if ureq::get(&health_url())
-            .timeout(std::time::Duration::from_secs(2))
-            .call()
-            .is_ok()
-        {
+        if health_ok() {
             return Ok(());
         }
     }
-    Err("起不来。手动检查: systemctl --user status vsearch-embed".into())
+    Err(format!(
+        "起不来。健康检查地址 {} 一直不通。\
+         手动确认后端是否在跑，或设 VSEARCH_START_CMD / VSEARCH_UNIT 指向你的启动方式。",
+        health_url()
+    ))
 }
 
 fn embed(texts: &[String]) -> Result<Vec<Vec<f32>>, String> {

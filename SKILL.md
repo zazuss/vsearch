@@ -58,6 +58,8 @@ Output format is `score  path:line` followed by the chunk body:
 | `VSEARCH_EMBED_URL` | `http://127.0.0.1:8098/v1/embeddings` |
 | `VSEARCH_HEALTH_URL` | derived from `VSEARCH_EMBED_URL` |
 | `VSEARCH_MODEL` | `bge-m3` |
+| `VSEARCH_START_CMD` | *(unset)* — shell command to start the backend when the health check fails, e.g. `systemctl --user start vsearch-embed` or `ollama serve &` |
+| `VSEARCH_UNIT` | `vsearch-embed` — systemd user unit tried when `VSEARCH_START_CMD` is unset |
 
 Colon-separated roots, `~/` allowed:
 
@@ -87,7 +89,7 @@ vsearch index
 
 1. **Chunking honours `§`.** Memory files separated by `§` split on it, so one line = one retrievable fact. Without this the whole file is one chunk and retrieval granularity is destroyed. Blank-line splitting is the fallback; blocks over 320 chars are hard-wrapped.
 2. **Vectors are little-endian f32 BLOBs, never JSON.** Storing f32 as decimal text was 166 MB and 1.0 s per query — most of that second was `serde_json` parsing decimals. Binary BLOB: 60 MB, 0.12 s, 13k chunks. Same data. If you touch storage, keep this.
-3. **Do not give an embedding model a chat-sized context.** bge-m3 is trained at 512 tokens. Handing it `-c 4096` wasted 1.4 GB of resident RAM for zero quality gain (1.8 GB → 411 MB after fixing). Real cost, invisible symptom.
+3. **Do not give an embedding model a chat-sized context.** bge-m3 is trained at 512 tokens. Handing it `-c 4096` wasted over 1.4 GB of resident RAM for zero quality gain. One flag fixes it, and the symptom is invisible — nothing runs slower, memory just sits there. Related: the server climbs to ~2.7 GB after a full index pass and never gives it back, so prefer on-demand start over always-on.
 4. **Incremental indexing is mtime-based.** Any file whose mtime changed is re-embedded whole-file; unchanged files are skipped (0.01 s for 355 files). Files that disappeared are purged.
 5. **Changing the embedding model requires a full rebuild** — dimensions differ, old vectors are garbage.
 6. **`rusqlite` uses `features = ["bundled"]`.** First build takes ~2 min (compiles SQLite C); binary 2.7 → 4.5 MB. This is what keeps "zero system dependencies" true. Do not switch to dynamic linking.
@@ -117,5 +119,5 @@ Measured on a Jetson Orin Nano 8GB, bge-m3 Q8_0, llama.cpp, GPU offload (`-ngl 9
 | Query end-to-end | 0.12s |
 | Index size | 60 MB |
 | Binary | 4.5 MB |
-| Embedding server RSS | 411 MB |
+| Embedding server RSS | ~1.0 GB idle, ~2.7 GB after a full index (does not shrink back) |
 | API cost | 0 |
