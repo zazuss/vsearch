@@ -4,7 +4,7 @@ Local semantic search over your markdown notes — one static binary, no runtime
 
 `vsearch` indexes a directory of markdown files into embeddings and answers "where did I write about X?" questions by meaning rather than by keyword. It was built to give a single-user AI agent a memory it can grep semantically: daily notes, memory files, and skill documents written in plain markdown.
 
-> 中文速览：把一堆 markdown 笔记做成本地向量索引，用一句话找回"我上次在哪儿写过这件事"。单二进制、零运行时依赖、全本地推理、不烧 API 费。README 下面有中文说明段。
+> 中文速览：把一堆 markdown 笔记做成本地向量索引，用一句话找回"我上次在哪儿写过这件事"。单二进制、零运行时依赖、全本地推理、不烧 API 费。中文说明见文末《中文说明》一节。
 
 ## Why not just grep / FTS?
 
@@ -115,6 +115,54 @@ There is a lot of good work in this space; these are the ones that came up and w
 - [qmd-rust](https://github.com/PakhomLeo/qmd-rust) — SQLite FTS5 over markdown, keyword not vector.
 
 vsearch's only real claim is narrow: it takes **any** markdown tree, needs **no** host application, and ships as **one** binary with no runtime to break. If you live in Obsidian, use an Obsidian tool — it will be better at being Obsidian.
+
+## 中文说明
+
+**它解决什么**：你记得"上次那个关于 X 的想法"，但原话里一个关键词都不含。关键词搜索（grep / FTS5）找不到，向量搜索能找到。
+
+**前提**：需要一个 OpenAI 兼容的 embedding 服务，vsearch 自己不产向量。
+
+```bash
+# llama.cpp（推荐，单二进制）
+llama-server -m bge-m3-Q8_0.gguf --embedding --pooling cls \
+  -c 512 -b 512 -ub 512 --port 8098 -ngl 99 --no-warmup
+```
+
+`bge-m3-Q8_0.gguf`（606 MB）从 [gpustack/bge-m3-GGUF](https://huggingface.co/gpustack/bge-m3-GGUF) 下载。**`-c 512` 别省**：bge-m3 训练长度就是 512，按 chat 模型的默认长上下文跑会白占 1.4 GB 内存。
+
+换成 ollama 也行：
+
+```bash
+ollama serve && ollama pull bge-m3
+export VSEARCH_EMBED_URL=http://127.0.0.1:11434/v1/embeddings
+```
+
+**编译 + 三条命令**：
+
+```bash
+cargo build --release && install -m755 target/release/vsearch ~/.local/bin/
+vsearch index                    # 建索引（幂等，按 mtime 增量）
+vsearch query "为什么鸭子扑了" 5  # 语义搜索
+vsearch stats                    # 索引构成
+```
+
+**索引自己的笔记**（任何 markdown 目录都行 —— Obsidian vault、Zettelkasten、文档文件夹、agent 的记忆文件）：
+
+```bash
+export VSEARCH_ROOTS="$HOME/notes:$HOME/work/wiki"
+vsearch index
+```
+
+不装 Obsidian 也能用，这是它跟现成方案最大的区别。
+
+**实测**（Jetson Orin Nano 8GB / bge-m3 Q8_0）：全量索引 355 文件 13 265 片段 **4 分 48 秒**；无改动增量 **0.01 秒**；查询端到端 **0.12 秒**；索引 **60 MB**；二进制 **4.5 MB**；embedding 服务驻留 **411 MB**；API 花费 **0**。
+
+**几个坑**：
+
+1. **命中不等于事实**。索引忠实返回你写过的内容，包括后来被纠正的。用之前回原文件确认。
+2. 记得确切字词时用 `rg`，向量搜索在这种场景更差。
+3. 换 embedding 模型必须重建索引（维度会变）。
+4. 改了源文件记得重跑 `vsearch index`，它不会自动监听。
 
 ## License
 
