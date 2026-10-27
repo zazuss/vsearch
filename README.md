@@ -86,6 +86,12 @@ vsearch index
 
 Any markdown tree works: Obsidian vault, Zettelkasten, a docs folder, your agent's memory files.
 
+## Using it from an AI agent
+
+`SKILL.md` in this repo is written **for an agent, not for you**. Drop it into your harness's skill/instructions directory (Hermes, Claude Code, anything that reads markdown instructions) and the agent gets: when semantic search beats grep, how to verify the backend is up, what the output means, when *not* to trust a hit, and the storage invariants it should not "optimise" away. This README is the human version.
+
+Whether you give an agent this tool at all is the interesting question. It helps when you keep written notes and want them reachable by meaning. It does not replace reading the actual file.
+
 ## How it works
 
 - **Chunking** — a file is split on blank lines into blocks; blocks over 320 chars are hard-wrapped. If the file contains `§` (a common memory-file separator), it splits on that instead, so one line = one retrievable fact.
